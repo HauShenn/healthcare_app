@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:healthcare_app/service/firestore_service.dart';
 import 'package:healthcare_app/service/notificationService.dart';
 
-import '../service/notificationService.dart';
-
 class MedicationReminderPage extends StatefulWidget {
   @override
   _MedicationReminderPageState createState() => _MedicationReminderPageState();

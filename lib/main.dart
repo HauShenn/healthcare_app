@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:healthcare_app/service/notificationService.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'service/background_service.dart';
 import 'features/Sign-in.dart';
 
 void main() async {

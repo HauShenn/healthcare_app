@@ -3,8 +3,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
-import 'notificationService.dart'; // For formatting the date
-
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
@@ -157,48 +155,6 @@ class FirestoreService {
       throw Exception("User not logged in");
     }
   }
-  //
-  // Future<String> saveMedicationReminder({
-  //   required String medicationName,
-  //   required String dosage,
-  //   required String time,
-  //   required String repeat
-  // }) async {
-  //   User? user = FirebaseAuth.instance.currentUser;
-  //   if (user != null) {
-  //     try {
-  //       // First save to Firestore
-  //       DocumentReference docRef = await _db
-  //           .collection('medication_reminders')
-  //           .doc(user.uid)
-  //           .collection('reminders')
-  //           .add({
-  //         'medication_name': medicationName,
-  //         'dosage': dosage,
-  //         'time': time,
-  //         'repeat': repeat,
-  //         'is_active': true,
-  //         'created_at': FieldValue.serverTimestamp(),
-  //         'user_id': user.uid,  // Add user ID for reference
-  //       });
-  //
-  //       // Then schedule the notification
-  //       await NotificationService.createMedicationReminder(
-  //         title: 'Medicine Reminder',
-  //         body: 'Time to take $medicationName - $dosage',
-  //         time: time,
-  //       );
-  //
-  //       print('Medication reminder saved to Firestore and notification scheduled');
-  //       return docRef.id;
-  //     } catch (e) {
-  //       print('Error saving medication reminder: $e');
-  //       rethrow;
-  //     }
-  //   } else {
-  //     throw Exception("User not logged in");
-  //   }
-  // }
 
   // Get medication reminders for current user
   Future<List<Map<String, dynamic>>> getMedicationReminders() async {
@@ -251,6 +207,7 @@ class FirestoreService {
     }
   }
 
+// Update medication reminder
   Future<void> updateMedicationReminder({
     required String id,
     required String medicationName,

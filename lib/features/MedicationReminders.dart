@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:healthcare_app/service/firestore_service.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:healthcare_app/service/notificationService.dart';
 
 import '../service/notificationService.dart';

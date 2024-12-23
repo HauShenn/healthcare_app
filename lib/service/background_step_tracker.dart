@@ -1,97 +1,132 @@
 import 'dart:async';
-import 'package:flutter/material.dart';
-import 'package:flutter_background_service/flutter_background_service.dart';
-import 'package:flutter_background_service_android/flutter_background_service_android.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:workmanager/workmanager.dart';
 import 'package:pedometer/pedometer.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
-import '../service/firestore_service.dart';
 import 'package:intl/intl.dart';
+import '../service/firestore_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+const String STEP_TRACKING_TASK = 'trackSteps';
+const String STEP_TRACKING_UNIQUE_NAME = 'stepTracking';
 
 class BackgroundStepTracker {
-  static Future<void> initializeBackgroundService() async {
-    final service = FlutterBackgroundService();
+  static StreamSubscription<StepCount>? _stepCountSubscription;
 
-    await service.configure(
-      androidConfiguration: AndroidConfiguration(
-        onStart: onStart,
-        autoStart: true,
-        isForegroundMode: true,
-        notificationChannelId: 'step_counter_channel',
-      ),
-      iosConfiguration: IosConfiguration(
-        autoStart: true,
-        onForeground: onStart,
-        onBackground: onIosBackground,
-      ),
-    );
+  static Future<void> initialize() async {
+    try {
+      await Workmanager().initialize(
+          callbackDispatcher,
+          isInDebugMode: true
+      );
 
-    service.startService();
+      await Workmanager().cancelAll();
+
+      await Workmanager().registerPeriodicTask(
+          STEP_TRACKING_UNIQUE_NAME,
+          STEP_TRACKING_TASK,
+          frequency: Duration(minutes: 15),
+          initialDelay: Duration(seconds: 5),
+          constraints: Constraints(
+              networkType: NetworkType.not_required,
+              requiresBatteryNotLow: false,
+              requiresCharging: false,
+              requiresDeviceIdle: false,
+              requiresStorageNotLow: false
+          ),
+          existingWorkPolicy: ExistingWorkPolicy.replace,
+          backoffPolicy: BackoffPolicy.linear,
+          backoffPolicyDelay: Duration(minutes: 1)
+      );
+
+      // Initialize pedometer listening
+      await _initializePedometer();
+
+      print('Background step tracking service initialized successfully');
+    } catch (e) {
+      print('Failed to initialize background service: $e');
+    }
   }
 
-  @pragma('vm:entry-point')
-  static Future<bool> onIosBackground(ServiceInstance service) async {
-    WidgetsFlutterBinding.ensureInitialized();
-    return true;
-  }
+  static Future<void> _initializePedometer() async {
+    // Cancel any existing subscription
+    await _stepCountSubscription?.cancel();
 
-  @pragma('vm:entry-point')
-  static Future<void> onStart(ServiceInstance service) async {
-    WidgetsFlutterBinding.ensureInitialized();
-    await Firebase.initializeApp();
-
-    // Check if user is signed in
-    final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser == null) return;
-
-    StreamSubscription<StepCount>? stepCountSubscription;
-
-    // Check and request activity recognition permission
-    var status = await Permission.activityRecognition.request();
-    if (!status.isGranted) return;
-
-    stepCountSubscription = Pedometer.stepCountStream.listen(
+    try {
+      _stepCountSubscription = Pedometer.stepCountStream.listen(
             (StepCount event) async {
-          // Get current steps
-          int steps = event.steps!;
-
-          // Load existing step data or create new
-          var stepData = await FirestoreService().getStepData(currentUser.uid);
-          int currentGoal = stepData['goal'] ?? 10000;
-          String lastRecordedDate = stepData['lastRecordedDate'];
-
-          // Reset steps if it's a new day
-          String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-          if (lastRecordedDate != today) {
-            steps = 0;
-          }
-
-          // Save steps to Firestore
-          await FirestoreService().saveStepData(
-              currentUser.uid,
-              steps,
-              currentGoal,
-              today
-          );
-
-          // Optional: Update service notification to show current steps
-          if (service is AndroidServiceInstance) {
-            service.setForegroundNotificationInfo(
-              title: "Step Counter",
-              content: "Today's steps: $steps",
-            );
-          }
+          await _handleStepCount(event);
         },
         onError: (error) {
-          print("Background step tracking error: $error");
-        }
-    );
-
-    // Keep service running
-    service.on('stopService')?.listen((event) {
-      stepCountSubscription?.cancel();
-      service.stopSelf();
-    });
+          print('Pedometer error: $error');
+        },
+      );
+    } catch (e) {
+      print('Error initializing pedometer: $e');
+    }
   }
+
+  static Future<void> _handleStepCount(StepCount event) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lastStepCount = prefs.getInt('lastStepCount') ?? 0;
+      final currentTime = DateTime.now();
+
+      // Only process if steps have increased
+      if (event.steps > lastStepCount) {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          final stepDiff = event.steps - lastStepCount;
+
+          // Get current data
+          final stepData = await FirestoreService().getStepData(user.uid);
+          final currentSteps = stepData['steps'] ?? 0;
+          final goal = stepData['goal'] ?? 10000;
+
+          // Save new total
+          await FirestoreService().saveStepData(
+            user.uid,
+            currentSteps + stepDiff,
+            goal,
+            DateFormat('yyyy-MM-dd').format(currentTime),
+          );
+
+          // Update last known values
+          await prefs.setInt('lastStepCount', event.steps);
+          await prefs.setString('lastStepUpdateTime', currentTime.toIso8601String());
+
+          print('Successfully updated step count. New steps: $stepDiff');
+        }
+      }
+    } catch (e) {
+      print('Error handling step count: $e');
+    }
+  }
+}
+
+@pragma('vm:entry-point')
+void callbackDispatcher() {
+  Workmanager().executeTask((task, inputData) async {
+    print('Starting background task: $task');
+
+    if (task != STEP_TRACKING_TASK) {
+      print('Unknown task type: $task');
+      return Future.value(false);
+    }
+
+    try {
+      // Initialize Firebase
+      if (!Firebase.apps.isNotEmpty) {
+        await Firebase.initializeApp();
+      }
+
+      // Re-initialize pedometer listening
+      await BackgroundStepTracker._initializePedometer();
+
+      return Future.value(true);
+    } catch (e) {
+      print('Background task error: $e');
+      return Future.value(true);
+    }
+  });
 }

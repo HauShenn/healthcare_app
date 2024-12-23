@@ -8,7 +8,7 @@ plugins {
 
 android {
     namespace = "com.example.healthcare_app"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 34
     ndkVersion = "25.1.8937393"
 
     compileOptions {
@@ -26,7 +26,7 @@ android {
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = 27
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 34
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
@@ -49,11 +49,12 @@ dependencies {
     implementation 'com.google.firebase:firebase-analytics'
     implementation 'com.google.firebase:firebase-auth'
     implementation 'com.google.firebase:firebase-firestore'
-    // firebase-core is included in the BOM. No need to explicitly specify a version.
     implementation 'com.android.support:wear:28.0.0'
     implementation 'com.google.android.support:wearable:2.9.0'
     implementation 'com.google.android.gms:play-services-fitness:21.2.0'
     compileOnly 'com.google.android.wearable:wearable:2.9.0'
-    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.3'
+    implementation 'com.google.android.gms:play-services-location:21.3.0'
+
+
 }
 

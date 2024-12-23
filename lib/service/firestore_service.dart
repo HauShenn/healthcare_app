@@ -231,5 +231,170 @@ class FirestoreService {
       'updated_at': FieldValue.serverTimestamp(),
     });
   }
+
+  Future<void> saveHealthAssessment({
+    required String bloodPressure,
+    required String heartRate,
+    required String weight,
+    required String temperature,
+    String? notes,
+  }) async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        await _db
+            .collection('users')
+            .doc(user.uid)
+            .collection('health_assessments')
+            .add({
+          'timestamp': FieldValue.serverTimestamp(),
+          'bloodPressure': bloodPressure,
+          'heartRate': heartRate,
+          'weight': weight,
+          'temperature': temperature,
+          'notes': notes ?? '',
+        });
+
+        print('Health assessment saved to Firestore');
+      } catch (e) {
+        print('Error saving health assessment: $e');
+        rethrow;
+      }
+    } else {
+      throw Exception("User not logged in");
+    }
+  }
+
+  // Get health assessments for current user
+  Future<List<Map<String, dynamic>>> getHealthAssessments({
+    DateTime? startDate,
+    DateTime? endDate,
+    int? limit,
+  }) async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        Query query = _db
+            .collection('users')
+            .doc(user.uid)
+            .collection('health_assessments')
+            .orderBy('timestamp', descending: true);
+
+        if (startDate != null) {
+          query = query.where('timestamp',
+              isGreaterThanOrEqualTo: Timestamp.fromDate(startDate));
+        }
+
+        if (endDate != null) {
+          query = query.where('timestamp',
+              isLessThanOrEqualTo: Timestamp.fromDate(endDate));
+        }
+
+        if (limit != null) {
+          query = query.limit(limit);
+        }
+
+        QuerySnapshot querySnapshot = await query.get();
+
+        return querySnapshot.docs.map((doc) {
+          Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+          data['id'] = doc.id; // Include the document ID
+          return data;
+        }).toList();
+      } catch (e) {
+        print('Error retrieving health assessments: $e');
+        return [];
+      }
+    } else {
+      throw Exception("User not logged in");
+    }
+  }
+
+  // Get latest health assessment
+  Future<Map<String, dynamic>?> getLatestHealthAssessment() async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        QuerySnapshot querySnapshot = await _db
+            .collection('users')
+            .doc(user.uid)
+            .collection('health_assessments')
+            .orderBy('timestamp', descending: true)
+            .limit(1)
+            .get();
+
+        if (querySnapshot.docs.isNotEmpty) {
+          Map<String, dynamic> data =
+          querySnapshot.docs.first.data() as Map<String, dynamic>;
+          data['id'] = querySnapshot.docs.first.id;
+          return data;
+        }
+        return null;
+      } catch (e) {
+        print('Error retrieving latest health assessment: $e');
+        return null;
+      }
+    } else {
+      throw Exception("User not logged in");
+    }
+  }
+
+  // Delete health assessment
+  Future<void> deleteHealthAssessment(String assessmentId) async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        await _db
+            .collection('users')
+            .doc(user.uid)
+            .collection('health_assessments')
+            .doc(assessmentId)
+            .delete();
+
+        print('Health assessment deleted from Firestore');
+      } catch (e) {
+        print('Error deleting health assessment: $e');
+        rethrow;
+      }
+    } else {
+      throw Exception("User not logged in");
+    }
+  }
+
+  // Update health assessment
+  Future<void> updateHealthAssessment({
+    required String assessmentId,
+    required String bloodPressure,
+    required String heartRate,
+    required String weight,
+    required String temperature,
+    String? notes,
+  }) async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        await _db
+            .collection('users')
+            .doc(user.uid)
+            .collection('health_assessments')
+            .doc(assessmentId)
+            .update({
+          'bloodPressure': bloodPressure,
+          'heartRate': heartRate,
+          'weight': weight,
+          'temperature': temperature,
+          'notes': notes ?? '',
+          'updated_at': FieldValue.serverTimestamp(),
+        });
+
+        print('Health assessment updated in Firestore');
+      } catch (e) {
+        print('Error updating health assessment: $e');
+        rethrow;
+      }
+    } else {
+      throw Exception("User not logged in");
+    }
+  }
 }
 

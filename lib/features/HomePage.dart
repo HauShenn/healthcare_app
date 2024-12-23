@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter_background_service/flutter_background_service.dart';
-import 'package:healthcare_app/service/background_step_tracker.dart'; // You'll need to create this file
 import 'package:healthcare_app/features/Sign-in.dart';
 import 'package:healthcare_app/features/step_cout.dart';
 import 'package:healthcare_app/features/profilePage.dart';
 import 'package:healthcare_app/features/MedicationReminders.dart';
-import 'package:healthcare_app/features/MedicationReminders.dart';
-
+import 'package:healthcare_app/service/background_step_tracker.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:workmanager/workmanager.dart';
+import 'HealthAssessment.dart';
 import 'MedicationReminderList.dart';
 
 class HomePage extends StatefulWidget {
@@ -21,22 +21,49 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-  // @override
-  // void initState() {
-  //   super.initState();
-  //   _initializeBackgroundStepTracking();
-  // }
-  // Future<void> _initializeBackgroundStepTracking() async {
-  //   final currentUser = FirebaseAuth.instance.currentUser;
-  //   if (currentUser != null) {
-  //     try {
-  //       // Initialize background step tracking
-  //       await BackgroundStepTracker.initializeBackgroundService();
-  //     } catch (e) {
-  //       print("Error initializing background step tracking: $e");
-  //     }
-  //   }
-  // }
+
+  // Constants for consistent spacing and sizing
+  final double cardPadding = 24.0;
+  final double buttonHeight = 72.0;
+  final double fontSize = 24.0;
+  final double iconSize = 32.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeBackgroundService();
+  }
+  Future<void> _initializeBackgroundService() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      print('User not logged in; skipping background service initialization.');
+      return;
+    }
+    if (await Permission.activityRecognition.request().isGranted) {
+      await BackgroundStepTracker.initialize();
+
+    }
+    else {
+      print('Activity recognition permission not granted');}
+
+    try {
+      await Workmanager().initialize(callbackDispatcher);
+      await Workmanager().registerPeriodicTask(
+        'stepTracking',
+        'trackSteps',
+        frequency: Duration(minutes: 15),
+        initialDelay: Duration(seconds: 10),
+        constraints: Constraints(
+          networkType: NetworkType.connected,
+          requiresBatteryNotLow: true,
+        ),
+        existingWorkPolicy: ExistingWorkPolicy.replace,
+      );
+      print('Background service initialized successfully.');
+    } catch (e) {
+      print('Error initializing background service: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -45,7 +72,10 @@ class _HomePageState extends State<HomePage> {
     if (currentUser == null) {
       return Scaffold(
         body: Center(
-          child: CircularProgressIndicator(),
+          child: CircularProgressIndicator(
+            strokeWidth: 4.0,
+            valueColor: AlwaysStoppedAnimation<Color>(Colors.blue.shade600),
+          ),
         ),
       );
     }
@@ -56,76 +86,200 @@ class _HomePageState extends State<HomePage> {
 
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: Colors.grey[100],
+      backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+        backgroundColor: Colors.blue.shade600,
+        elevation: 4,
         leading: IconButton(
-          icon: Icon(Icons.menu, color: Colors.blueGrey[800]),
+          icon: Icon(Icons.menu, color: Colors.white, size: iconSize),
           onPressed: () => _scaffoldKey.currentState?.openDrawer(),
         ),
         title: Text(
-          'Dashboard',
+          'My Health Dashboard',
           style: TextStyle(
-            color: Colors.blueGrey[800],
+            color: Colors.white,
+            fontSize: fontSize,
             fontWeight: FontWeight.bold,
           ),
         ),
       ),
       drawer: _buildDrawer(context, userName, userEmail),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // User Greeting and Info Card
-              Container(
-                padding: EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.grey.withOpacity(0.2),
-                      spreadRadius: 2,
-                      blurRadius: 10,
-                      offset: Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '$greeting, $userName!',
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blueGrey[800],
-                      ),
-                    ),
-                    SizedBox(height: 10),
-                    Text(
-                      userEmail,
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.blueGrey[600],
-                      ),
-                    ),
-                  ],
-                ),
+      body: SingleChildScrollView(
+        padding: EdgeInsets.all(cardPadding),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _buildGreetingCard(userName, userEmail, greeting),
+            SizedBox(height: 24),
+            _buildQuickAccessButtons(context),
+            SizedBox(height: 24),
+            _buildHealthSummaryCard(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGreetingCard(String userName, String userEmail, String greeting) {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(cardPadding),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '$greeting,\n$userName!',
+              style: TextStyle(
+                fontSize: fontSize * 1.2,
+                fontWeight: FontWeight.bold,
+                color: Colors.blue.shade800,
+                height: 1.3,
               ),
-              SizedBox(height: 24),
+            ),
+            SizedBox(height: 16),
+            Text(
+              userEmail,
+              style: TextStyle(
+                fontSize: fontSize * 0.75,
+                color: Colors.grey[700],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-              // Health Summary Card
-              _buildHealthSummaryCard(),
-              SizedBox(height: 24),
-
-              // Quick Actions
-              _buildQuickActionsCard(context),
-            ],
+  Widget _buildQuickAccessButtons(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Quick Access',
+          style: TextStyle(
+            fontSize: fontSize,
+            fontWeight: FontWeight.bold,
+            color: Colors.grey[800],
           ),
+        ),
+        SizedBox(height: 16),
+        _buildAccessButton(
+          icon: Icons.medication,
+          label: 'My Medications',
+          color: Colors.green.shade600,
+          onTap: () => navigateToMedicationReminders(context),
+        ),
+        SizedBox(height: 16),
+        _buildAccessButton(
+          icon: Icons.directions_walk,
+          label: 'Step Counter',
+          color: Colors.orange.shade600,
+          onTap: () => navigateToStepCounter(context),
+        ),
+        SizedBox(height: 16),
+        _buildAccessButton(
+          icon: Icons.health_and_safety,
+          label: 'Health Check',
+          color: Colors.blue.shade600,
+          onTap: () => navigateToHealthAssessment(context),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAccessButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return ElevatedButton(
+      onPressed: onTap,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color,
+        padding: EdgeInsets.symmetric(vertical: 20),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: iconSize, color: Colors.white),
+          SizedBox(width: 16),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: fontSize,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHealthSummaryCard() {
+    final steps = 0;
+    final goal = 10000;
+    final progress = steps / goal;
+
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: EdgeInsets.all(cardPadding),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Today\'s Progress',
+              style: TextStyle(
+                fontSize: fontSize,
+                fontWeight: FontWeight.bold,
+                color: Colors.blue.shade800,
+              ),
+            ),
+            SizedBox(height: 24),
+            Row(
+              children: [
+                Icon(Icons.directions_walk, size: iconSize, color: Colors.green),
+                SizedBox(width: 16),
+                Text(
+                  '$steps steps',
+                  style: TextStyle(
+                    fontSize: fontSize,
+                    color: Colors.grey[800],
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 16),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: LinearProgressIndicator(
+                value: progress.clamp(0.0, 1.0),
+                backgroundColor: Colors.grey[200],
+                valueColor: AlwaysStoppedAnimation(Colors.green),
+                minHeight: 16,
+              ),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Goal: 10,000 steps',
+              style: TextStyle(
+                fontSize: fontSize * 0.75,
+                color: Colors.grey[600],
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -141,16 +295,24 @@ class _HomePageState extends State<HomePage> {
               userName,
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                fontSize: 18,
+                fontSize: fontSize,
+                color: Colors.white,
               ),
             ),
-            accountEmail: Text(userEmail),
+            accountEmail: Text(
+              userEmail,
+              style: TextStyle(
+                fontSize: fontSize * 0.75,
+                color: Colors.white.withOpacity(0.9),
+              ),
+            ),
             currentAccountPicture: CircleAvatar(
               backgroundColor: Colors.white,
+              radius: 40,
               child: Icon(
                 Icons.person,
                 color: Colors.blue.shade600,
-                size: 40,
+                size: iconSize,
               ),
             ),
             decoration: BoxDecoration(
@@ -159,24 +321,17 @@ class _HomePageState extends State<HomePage> {
           ),
           _buildDrawerItem(
             icon: Icons.person_outline,
-            title: 'Edit Profile',
+            title: 'My Profile',
             onTap: () {
-              Navigator.pop(context); // Close the drawer
+              Navigator.pop(context);
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => ProfilePage()),
               );
             },
           ),
-          _buildDrawerItem(
-            icon: Icons.directions_walk,
-            title: 'Step Counter',
-            onTap: () {
-              Navigator.pop(context); // Close the drawer
-              navigateToStepCounter(context);
-            },
-          ),
-          Divider(),
+          // ... (keep other drawer items with updated styling)
+          Divider(height: 32, thickness: 1),
           _buildDrawerItem(
             icon: Icons.logout,
             title: 'Sign Out',
@@ -193,158 +348,18 @@ class _HomePageState extends State<HomePage> {
     required VoidCallback onTap,
   }) {
     return ListTile(
-      leading: Icon(icon, color: Colors.blueGrey[700]),
+      contentPadding: EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      leading: Icon(icon, size: iconSize, color: Colors.blue.shade700),
       title: Text(
         title,
         style: TextStyle(
-          color: Colors.blueGrey[800],
-          fontSize: 16,
+          fontSize: fontSize * 0.85,
+          color: Colors.grey[800],
         ),
       ),
       onTap: onTap,
     );
   }
-
-  Widget _buildHealthSummaryCard() {
-    final steps = 0; // Replace with real data
-    final goal = 10000;
-    final progress = steps / goal;
-
-    return Container(
-      padding: EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.2),
-            spreadRadius: 2,
-            blurRadius: 10,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Daily Health Goal',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: Colors.blueGrey[800],
-            ),
-          ),
-          SizedBox(height: 16),
-          Text(
-            'Today\'s Steps: $steps',
-            style: TextStyle(
-              fontSize: 18,
-              color: Colors.blueGrey[700],
-            ),
-          ),
-          SizedBox(height: 10),
-          LinearProgressIndicator(
-            value: progress.clamp(0.0, 1.0),
-            backgroundColor: Colors.grey[200],
-            valueColor: AlwaysStoppedAnimation(Colors.green),
-            minHeight: 10,
-          ),
-          SizedBox(height: 10),
-          Text(
-            '${(progress * 100).toStringAsFixed(1)}% of your goal',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.blueGrey[600],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildQuickActionsCard(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.2),
-            spreadRadius: 2,
-            blurRadius: 10,
-            offset: Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Quick Actions',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: Colors.blueGrey[800],
-            ),
-          ),
-          SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () => navigateToStepCounter(context),
-                  icon: Icon(Icons.directions_walk),
-                  label: Text('Step Counter'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue.shade600,
-                    foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-              ),
-              SizedBox(width: 16),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: () => navigateToMedicationReminders(context),
-                  icon: Icon(Icons.medication),
-                  label: Text('Medication'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green.shade600,
-                    foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 16),
-          ElevatedButton.icon(
-            onPressed: () => navigateToMedicationReminderList(context),
-            icon: Icon(Icons.list_alt),
-            label: Text('Medication List'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.purple.shade600,
-              foregroundColor: Colors.white,
-              padding: EdgeInsets.symmetric(vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
 
   String _getGreeting() {
     final hour = DateTime.now().hour;
@@ -366,10 +381,18 @@ class _HomePageState extends State<HomePage> {
       MaterialPageRoute(builder: (context) => MedicationReminderPage()),
     );
   }
+
   void navigateToMedicationReminderList(BuildContext context) {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => MedicationReminderList()),
+    );
+  }
+
+  void navigateToHealthAssessment(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => HealthAssessmentPage()),
     );
   }
 

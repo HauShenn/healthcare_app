@@ -1,7 +1,6 @@
 import 'dart:async';
+
 import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:pedometer/pedometer.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../service/firestore_service.dart';
@@ -14,44 +13,37 @@ class StepCounter extends StatefulWidget {
   _StepCounterState createState() => _StepCounterState();
 }
 
-class _StepCounterState extends State<StepCounter> with WidgetsBindingObserver {
-  Stream<StepCount>? _stepCountStream;
-  StreamSubscription<StepCount>? _stepCountSubscription;
-  List<Map<String, dynamic>> _weeklyData = [];
-
+class _StepCounterState extends State<StepCounter> {
   int _steps = 0;
   int _goal = 10000;
   String? userId;
-  String? lastRecordedDate;
-  bool _isPedometerInitialized = false;
-  int _initialStepCount = 0;
-  bool _isFirstReading = true;
+  List<Map<String, dynamic>> _weeklyData = [];
+  Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _initializeStepTracking();
-    _loadWeeklyData();
+    _initializeData();
+    // Refresh data every minute
+    _refreshTimer = Timer.periodic(Duration(minutes: 1), (timer) {
+      _loadStepData();
+      _loadWeeklyData();
+    });
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _stepCountSubscription?.cancel();
+    _refreshTimer?.cancel();
     super.dispose();
   }
 
-  Future<void> _initializeStepTracking() async {
-    if (_isPedometerInitialized) return;
-
+  Future<void> _initializeData() async {
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) return;
 
     userId = currentUser.uid;
-
     await _loadStepData();
-    await _setupPedometer();
+    await _loadWeeklyData();
   }
 
   Future<void> _loadStepData() async {
@@ -60,68 +52,9 @@ class _StepCounterState extends State<StepCounter> with WidgetsBindingObserver {
       setState(() {
         _steps = stepData['steps'] ?? 0;
         _goal = stepData['goal'] ?? 10000;
-        lastRecordedDate = stepData['lastRecordedDate'];
       });
-
-      String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-      if (lastRecordedDate != today) {
-        await _resetSteps();
-      }
     } catch (e) {
       print("Error loading step data: $e");
-    }
-  }
-
-  Future<void> _setupPedometer() async {
-    var status = await Permission.activityRecognition.request();
-    if (status.isGranted) {
-      try {
-        _stepCountStream = Pedometer.stepCountStream;
-        _stepCountSubscription = _stepCountStream?.listen(
-              (StepCount event) {
-            if (_isFirstReading) {
-              _initialStepCount = event.steps;
-              _isFirstReading = false;
-              return;
-            }
-
-            int newSteps = event.steps - _initialStepCount;
-            if (newSteps >= 0) {  // Prevent negative steps
-              setState(() {
-                _steps = newSteps;
-              });
-              _saveStepData();
-            }
-          },
-          onError: (error) {
-            print("Pedometer tracking error: $error");
-          },
-          cancelOnError: true,
-        );
-        _isPedometerInitialized = true;
-      } catch (e) {
-        print("Error setting up pedometer: $e");
-      }
-    }
-  }
-
-  Future<void> _resetSteps() async {
-    _isFirstReading = true;  // Reset the first reading flag
-    _initialStepCount = 0;   // Reset initial count
-    setState(() {
-      _steps = 0;
-    });
-    await _saveStepData();
-  }
-
-  Future<void> _saveStepData() async {
-    if (userId != null) {
-      await FirestoreService().saveStepData(
-        userId!,
-        _steps,
-        _goal,
-        DateFormat('yyyy-MM-dd').format(DateTime.now()),
-      );
     }
   }
 
@@ -131,21 +64,6 @@ class _StepCounterState extends State<StepCounter> with WidgetsBindingObserver {
       setState(() {
         _weeklyData = data;
       });
-    }
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    super.didChangeAppLifecycleState(state);
-    if (state == AppLifecycleState.resumed) {
-      // Check if it's a new day when app resumes
-      String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
-      if (lastRecordedDate != today) {
-        _resetSteps();
-      }
-      // Reinitialize step tracking
-      _isFirstReading = true;
-      _setupPedometer();
     }
   }
 
@@ -169,7 +87,14 @@ class _StepCounterState extends State<StepCounter> with WidgetsBindingObserver {
                 setState(() {
                   _goal = newGoal;
                 });
-                await _saveStepData();
+                if (userId != null) {
+                  await FirestoreService().saveStepData(
+                    userId!,
+                    _steps,
+                    _goal,
+                    DateFormat('yyyy-MM-dd').format(DateTime.now()),
+                  );
+                }
                 Navigator.of(context).pop();
               },
               child: Text('Set Goal'),
@@ -403,6 +328,7 @@ class _StepCounterState extends State<StepCounter> with WidgetsBindingObserver {
       ),
       body: RefreshIndicator(
         onRefresh: () async {
+          await _loadStepData();
           await _loadWeeklyData();
         },
         child: ListView(

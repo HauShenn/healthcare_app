@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../service/firestore_service.dart';
+import '../services/firestore_service.dart';
 import 'Sign-up.dart';
 import 'HomePage.dart';
 
@@ -13,17 +13,46 @@ class _SignInPageState extends State<SignInPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isPasswordVisible = false;
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
 
   Future<void> signIn() async {
+    if (!mounted) return;
+
+    setState(() => _isLoading = true);
+
     try {
+      // Validate inputs
+      if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Please fill in all fields'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // Sign in
       UserCredential userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: _emailController.text,
+        email: _emailController.text.trim(),
         password: _passwordController.text,
       );
 
+      // Get user data
       final firestoreService = FirestoreService();
       var userData = await firestoreService.getUserData();
       var userDataMap = userData.data() as Map<String, dynamic>;
+
+      // Check if widget is still mounted before showing success message
+      if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -32,20 +61,44 @@ class _SignInPageState extends State<SignInPage> {
         ),
       );
 
+      // Navigate to home page
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => HomePage(userData: userDataMap)),
+        MaterialPageRoute(
+          builder: (context) => HomePage(userData: userDataMap),
+        ),
       );
-    } catch (e) {
+    } on FirebaseAuthException catch (e) {
+      if (!mounted) return;
+
+      String errorMessage = 'Sign-in failed. Please check your credentials.';
+      if (e.code == 'user-not-found') {
+        errorMessage = 'No user found with this email.';
+      } else if (e.code == 'wrong-password') {
+        errorMessage = 'Wrong password provided.';
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Sign-in failed. Please check your credentials.'),
+          content: Text(errorMessage),
           backgroundColor: Colors.red,
         ),
       );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('An error occurred. Please try again.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -145,7 +198,7 @@ class _SignInPageState extends State<SignInPage> {
 
                   // Sign In Button
                   ElevatedButton(
-                    onPressed: signIn,
+                    onPressed: _isLoading ? null : signIn,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.blue.shade600,
                       foregroundColor: Colors.white,
@@ -155,7 +208,16 @@ class _SignInPageState extends State<SignInPage> {
                       ),
                       elevation: 3,
                     ),
-                    child: Text(
+                    child: _isLoading
+                        ? SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        strokeWidth: 2,
+                      ),
+                    )
+                        : Text(
                       'Sign In',
                       style: TextStyle(
                         fontSize: 18,

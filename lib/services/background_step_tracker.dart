@@ -4,7 +4,7 @@ import 'package:workmanager/workmanager.dart';
 import 'package:pedometer/pedometer.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
-import '../service/firestore_service.dart';
+import 'firestore_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 const String STEP_TRACKING_TASK = 'trackSteps';

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:healthcare_app/service/notificationService.dart';
-import 'package:healthcare_app/service/firestore_service.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:healthcare_app/services/notificationService.dart';
+import 'package:healthcare_app/services/firestore_service.dart';
+import 'package:healthcare_app/services/permission_handler_services.dart';
 import 'features/Sign-in.dart';
 import 'features/HomePage.dart';
 
@@ -12,20 +12,10 @@ void main() async {
   await initializeApp();
   runApp(MyApp());
 }
-
 Future<void> initializeApp() async {
   try {
     await Firebase.initializeApp();
     await NotificationService.initializeNotification();
-
-    // Request necessary permissions
-    var status = await Permission.activityRecognition.status;
-    if (!status.isGranted) {
-      var result = await Permission.activityRecognition.request();
-      if (!result.isGranted) {
-        print("Permission denied. Activity recognition will not work.");
-      }
-    }
   } catch (e) {
     print('Error during initialization: $e');
   }
@@ -40,6 +30,21 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
+        // Add additional theme settings for Bluetooth UI
+        cardTheme: CardTheme(
+          elevation: 4,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            padding: EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+          ),
+        ),
       ),
       home: AuthenticationWrapper(),
     );
@@ -55,30 +60,34 @@ class AuthenticationWrapper extends StatelessWidget {
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return Center(child: CircularProgressIndicator());
+          return Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
         }
 
         if (snapshot.hasData && snapshot.data != null) {
-          // User is logged in, fetch their data and navigate to HomePage
           return FutureBuilder<Map<String, dynamic>>(
             future: _loadUserData(),
             builder: (context, userDataSnapshot) {
               if (userDataSnapshot.connectionState == ConnectionState.waiting) {
-                return Center(child: CircularProgressIndicator());
+                return Scaffold(
+                  body: Center(child: CircularProgressIndicator()),
+                );
               }
 
               if (userDataSnapshot.hasData) {
-                return HomePage(userData: userDataSnapshot.data!);
+                // Show permission handler page before HomePage
+                return PermissionHandlerPage(
+                  nextPage: HomePage(userData: userDataSnapshot.data!),
+                );
               }
 
-              // If we can't load user data, sign out and show login
               FirebaseAuth.instance.signOut();
               return SignInPage();
             },
           );
         }
 
-        // User is not logged in
         return SignInPage();
       },
     );

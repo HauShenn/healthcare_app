@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:healthcare_app/service/firestore_service.dart'; // Update with your actual path
+import 'package:healthcare_app/services/firestore_service.dart'; // Update with your actual path
 
 class HealthAssessmentPage extends StatefulWidget {
   @override

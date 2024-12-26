@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:healthcare_app/features/Sign-in.dart';
 import 'package:healthcare_app/features/step_cout.dart';
 import 'package:healthcare_app/features/profilePage.dart';
 import 'package:healthcare_app/features/MedicationReminders.dart';
-import 'package:healthcare_app/service/background_step_tracker.dart';
+import 'package:healthcare_app/services/background_step_tracker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:workmanager/workmanager.dart';
+import 'BluetoothConnection.dart';
 import 'HealthAssessment.dart';
 import 'MedicationReminderList.dart';
 
@@ -21,7 +23,8 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
-
+  BluetoothDevice? connectedDevice;
+  bool isDeviceConnected = false;
   // Constants for consistent spacing and sizing
   final double cardPadding = 24.0;
   final double buttonHeight = 72.0;
@@ -32,6 +35,45 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _initializeBackgroundService();
+    _checkConnectedDevice();
+  }
+
+  Future<void> _checkConnectedDevice() async {
+    try {
+      var connectedDevices = await FlutterBluePlus.connectedSystemDevices;
+      setState(() {
+        connectedDevice = connectedDevices.isNotEmpty ? connectedDevices.first : null;
+        isDeviceConnected = connectedDevice != null;
+      });
+    } catch (e) {
+      print('Error checking connected device: $e');
+    }
+  }
+
+  Future<void> disconnectDevice() async {
+    try {
+      if (connectedDevice != null) {
+        await connectedDevice!.disconnect();
+        setState(() {
+          isDeviceConnected = false;
+          connectedDevice = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Device disconnected successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error disconnecting device: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to disconnect device'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
   Future<void> _initializeBackgroundService() async {
     final user = FirebaseAuth.instance.currentUser;
@@ -64,7 +106,88 @@ class _HomePageState extends State<HomePage> {
       print('Error initializing background service: $e');
     }
   }
-
+  Widget _buildDeviceStatusCard() {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  isDeviceConnected ? Icons.bluetooth_connected : Icons.bluetooth_disabled,
+                  size: 32,
+                  color: isDeviceConnected ? Colors.blue : Colors.grey,
+                ),
+                SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Smart Watch Status',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey[800],
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        isDeviceConnected
+                            ? 'Connected to: ${connectedDevice?.name ?? "Unknown Device"}'
+                            : 'No device connected',
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: isDeviceConnected ? Colors.green : Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (isDeviceConnected)
+                  IconButton(
+                    icon: Icon(Icons.bluetooth_disabled),
+                    onPressed: disconnectDevice,
+                    color: Colors.red,
+                    tooltip: 'Disconnect device',
+                  )
+                else
+                  IconButton(
+                    icon: Icon(Icons.refresh),
+                    onPressed: _checkConnectedDevice,
+                    color: Colors.blue,
+                  ),
+              ],
+            ),
+            if (!isDeviceConnected) ...[
+              SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () => navigateToBluetoothConnection(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.bluetooth_searching),
+                    SizedBox(width: 8),
+                    Text('Connect Device'),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
   @override
   Widget build(BuildContext context) {
     final currentUser = FirebaseAuth.instance.currentUser;
@@ -110,6 +233,8 @@ class _HomePageState extends State<HomePage> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _buildGreetingCard(userName, userEmail, greeting),
+            SizedBox(height: 24),
+            _buildDeviceStatusCard(), // Add this line
             SizedBox(height: 24),
             _buildQuickAccessButtons(context),
             SizedBox(height: 24),
@@ -186,6 +311,13 @@ class _HomePageState extends State<HomePage> {
           label: 'Health Check',
           color: Colors.blue.shade600,
           onTap: () => navigateToHealthAssessment(context),
+        ),
+        SizedBox(height: 16),
+        _buildAccessButton(
+          icon: Icons.bluetooth,
+          label: 'Connect Watch',
+          color: Colors.purple.shade600,
+          onTap: () => navigateToBluetoothConnection(context),
         ),
       ],
     );
@@ -396,6 +528,13 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+
+  void navigateToBluetoothConnection(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => BluetoothConnection()),
+    );
+  }
   Future<void> _signOut(BuildContext context) async {
     try {
       await FirebaseAuth.instance.signOut();

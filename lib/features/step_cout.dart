@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
-import '../service/firestore_service.dart';
+import '../services/firestore_service.dart';
 import 'package:intl/intl.dart';
 
 class StepCounter extends StatefulWidget {

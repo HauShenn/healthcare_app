@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -22,9 +24,13 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  final _stepCountController = StreamController<int>.broadcast();
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   BluetoothDevice? connectedDevice;
   bool isDeviceConnected = false;
+  int currentSteps = 0; // Track steps here
+  int? currentHeartRate;
+
   // Constants for consistent spacing and sizing
   final double cardPadding = 24.0;
   final double buttonHeight = 72.0;
@@ -36,6 +42,13 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _initializeBackgroundService();
     _checkConnectedDevice();
+
+  }
+
+  @override
+  void dispose() {
+    _stepCountController.close();
+    super.dispose();
   }
 
   Future<void> _checkConnectedDevice() async {
@@ -75,6 +88,7 @@ class _HomePageState extends State<HomePage> {
       );
     }
   }
+
   Future<void> _initializeBackgroundService() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
@@ -83,10 +97,9 @@ class _HomePageState extends State<HomePage> {
     }
     if (await Permission.activityRecognition.request().isGranted) {
       await BackgroundStepTracker.initialize();
-
+    } else {
+      print('Activity recognition permission not granted');
     }
-    else {
-      print('Activity recognition permission not granted');}
 
     try {
       await Workmanager().initialize(callbackDispatcher);
@@ -106,6 +119,7 @@ class _HomePageState extends State<HomePage> {
       print('Error initializing background service: $e');
     }
   }
+
   Widget _buildDeviceStatusCard() {
     return Card(
       elevation: 4,
@@ -188,6 +202,7 @@ class _HomePageState extends State<HomePage> {
       ),
     );
   }
+
   @override
   Widget build(BuildContext context) {
     final currentUser = FirebaseAuth.instance.currentUser;
@@ -234,7 +249,7 @@ class _HomePageState extends State<HomePage> {
           children: [
             _buildGreetingCard(userName, userEmail, greeting),
             SizedBox(height: 24),
-            _buildDeviceStatusCard(), // Add this line
+            _buildDeviceStatusCard(),
             SizedBox(height: 24),
             _buildQuickAccessButtons(context),
             SizedBox(height: 24),
@@ -357,9 +372,13 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildHealthSummaryCard() {
-    final steps = 0;
-    final goal = 10000;
-    final progress = steps / goal;
+    return StreamBuilder<int>(
+        stream: _stepCountController.stream,
+        initialData: 0,
+        builder: (context, snapshot) {
+          final currentSteps = snapshot.data ?? 0;
+          final goal = 10000;
+          final progress = currentSteps / goal;
 
     return Card(
       elevation: 4,
@@ -385,11 +404,8 @@ class _HomePageState extends State<HomePage> {
                 Icon(Icons.directions_walk, size: iconSize, color: Colors.green),
                 SizedBox(width: 16),
                 Text(
-                  '$steps steps',
-                  style: TextStyle(
-                    fontSize: fontSize,
-                    color: Colors.grey[800],
-                  ),
+                  '$currentSteps steps',
+                  style: TextStyle(fontSize: fontSize, color: Colors.grey[800]),
                 ),
               ],
             ),
@@ -415,6 +431,7 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
     );
+    });
   }
 
   Widget _buildDrawer(BuildContext context, String userName, String userEmail) {
@@ -462,7 +479,6 @@ class _HomePageState extends State<HomePage> {
               );
             },
           ),
-          // ... (keep other drawer items with updated styling)
           Divider(height: 32, thickness: 1),
           _buildDrawerItem(
             icon: Icons.logout,
@@ -528,13 +544,19 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-
   void navigateToBluetoothConnection(BuildContext context) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => BluetoothConnection()),
+      MaterialPageRoute(
+        builder: (context) => BluetoothConnection(
+          onStepsReceived: (steps) {
+            _stepCountController.add(steps);
+          },
+        ),
+      ),
     );
   }
+}
   Future<void> _signOut(BuildContext context) async {
     try {
       await FirebaseAuth.instance.signOut();
@@ -558,4 +580,3 @@ class _HomePageState extends State<HomePage> {
       );
     }
   }
-}

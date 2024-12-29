@@ -5,6 +5,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 
 class BluetoothConnection extends StatefulWidget {
+  final Function(int steps) onStepsReceived;
+
+  BluetoothConnection({required this.onStepsReceived});
+
   @override
   _BluetoothConnectionState createState() => _BluetoothConnectionState();
 }
@@ -29,6 +33,7 @@ class _BluetoothConnectionState extends State<BluetoothConnection> {
     super.dispose();
     FlutterBluePlus.stopScan();
   }
+
   Future<void> _loadDeviceHistory() async {
     final prefs = await SharedPreferences.getInstance();
     final historyJson = prefs.getString('device_history') ?? '[]';
@@ -62,7 +67,6 @@ class _BluetoothConnectionState extends State<BluetoothConnection> {
   }
 
   Future<void> _checkBluetoothState() async {
-    // Listen for Bluetooth state changes
     FlutterBluePlus.adapterState.listen((BluetoothAdapterState state) {
       if (state == BluetoothAdapterState.off) {
         setState(() {
@@ -74,6 +78,7 @@ class _BluetoothConnectionState extends State<BluetoothConnection> {
       }
     });
   }
+
   Future<void> _checkPermissions() async {
     Map<Permission, PermissionStatus> statuses = await [
       Permission.bluetooth,
@@ -120,8 +125,8 @@ class _BluetoothConnectionState extends State<BluetoothConnection> {
       );
     }
   }
+
   void startScan() async {
-    // Check if Bluetooth is enabled
     if (await FlutterBluePlus.isSupported == false) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -183,38 +188,20 @@ class _BluetoothConnectionState extends State<BluetoothConnection> {
         isScanning = false;
       });
     }
-
-
-    // Stop scanning after 4 seconds
-    Future.delayed(Duration(seconds: 4), () {
-      if (!mounted) return; // Prevent setState if the widget is no longer mounted
-      FlutterBluePlus.stopScan();
-      setState(() {
-        isScanning = false;
-      });
-    });
   }
 
   Future<void> connectToDevice(BluetoothDevice device) async {
     try {
-      await device.connect(timeout: Duration(seconds: 4));
+      await device.connect();
       await _addToHistory(device);
       setState(() {
         isConnected = true;
         connectedDevice = device;
       });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Connected to ${device.name}'),
-          backgroundColor: Colors.green,
-        ),
-      );
-
+      await Future.delayed(Duration(seconds: 1));
+      // Discover services
       List<BluetoothService> services = await device.discoverServices();
-      for (BluetoothService service in services) {
-        _handleServices(service);
-      }
+      _handleServices(services);
     } catch (e) {
       print("Error connecting to device: $e");
       ScaffoldMessenger.of(context).showSnackBar(
@@ -246,24 +233,88 @@ class _BluetoothConnectionState extends State<BluetoothConnection> {
     }
   }
 
-  void _handleServices(BluetoothService service) {
-    // Handle different services based on their UUIDs
-    // You'll need to identify the correct UUIDs for your H13 mini watch
-    print('Service UUID: ${service.uuid}');
 
-    for (BluetoothCharacteristic characteristic in service.characteristics) {
-      print('Characteristic UUID: ${characteristic.uuid}');
 
-      // Example: Handle heart rate data
-      if (characteristic.properties.notify) {
-        characteristic.setNotifyValue(true);
-        characteristic.value.listen((value) {
-          // Process the data based on your watch's protocol
-          print('Received data: $value');
+  void _handleServices(List<BluetoothService> services) {
+    services.forEach((service) {
+      print('Service UUID: ${service.uuid}');
+
+      if (service.uuid.toString() == '6e400001-b5a3-f393-e0a9-e50e24dcca9d') {
+        service.characteristics.forEach((characteristic) {
+          print('  Characteristic UUID: ${characteristic.uuid}');
+
+          if (characteristic.uuid.toString() == '6e400003-b5a3-f393-e0a9-e50e24dcca9d') {
+            characteristic.setNotifyValue(true);
+            characteristic.value.listen((value) {
+              print('Received raw data: ${value.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join(', ')}');
+
+              if (value.length >= 14) {  // Ensure we have at least 14 bytes
+                int steps = value[13];  // Get the value of byte 13
+                print('Steps: $steps');
+
+                // Call the callback to update HomePage
+                widget.onStepsReceived(steps);
+              } else {
+                print('Not enough data to read steps.');
+              }
+            });
+          }
         });
       }
-    }
+    });
   }
+  // void _handleServices(List<BluetoothService> services) {
+  //   services.forEach((service) {
+  //     print('Service UUID: ${service.uuid}');
+  //
+  //     // Check for the Unknown Service (6e400001-b5a3-f393-e0a9-e50e24dcca9d)
+  //     if (service.uuid.toString() == '6e400001-b5a3-f393-e0a9-e50e24dcca9d') {
+  //       service.characteristics.forEach((characteristic) {
+  //         print('  Characteristic UUID: ${characteristic.uuid}');
+  //
+  //         // Subscribe to the NOTIFY characteristic
+  //         if (characteristic.uuid.toString() == '6e400003-b5a3-f393-e0a9-e50e24dcca9d') {
+  //           characteristic.setNotifyValue(true);
+  //           characteristic.value.listen((value) {
+  //             print('Received raw data: ${value.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join(', ')}');
+  //             if (value.length >= 20) {
+  //               try {
+  //                 Uint8List data = Uint8List.fromList(value);
+  //                 ByteData byteData = ByteData.view(data.buffer);
+  //
+  //                 // Print each byte individually
+  //                 for (int i = 0; i < value.length; i++) {
+  //                   print('Byte $i: ${value[i]} (${value[i].toRadixString(16).padLeft(2, '0')})');
+  //                 }
+  //
+  //                 // Try to interpret larger chunks of data
+  //                 if (value.length >= 4) {
+  //                   print('First 4 bytes as int32 (little endian): ${byteData.getInt32(0, Endian.little)}');
+  //                   print('First 4 bytes as int32 (big endian): ${byteData.getInt32(0, Endian.big)}');
+  //                 }
+  //
+  //                 // Look for any non-zero values that might be changing
+  //                 for (int i = 0; i < value.length; i += 4) {
+  //                   if (i + 3 < value.length) {
+  //                     int val = byteData.getUint32(i, Endian.little);
+  //                     if (val != 0) {
+  //                       print('Non-zero 4-byte value at index $i: $val');
+  //                     }
+  //                   }
+  //                 }
+  //               } catch (e) {
+  //                 print('Error parsing data: $e');
+  //               }
+  //             } else {
+  //               print('Received data is too short: ${value.length} bytes');
+  //             }
+  //           });
+  //         }
+  //       });
+  //     }
+  //   });
+  // }
+
   Widget _buildDeviceHistory() {
     if (deviceHistory.isEmpty) {
       return Padding(
@@ -561,5 +612,4 @@ class _BluetoothConnectionState extends State<BluetoothConnection> {
       ),
     );
   }
-
 }

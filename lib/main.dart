@@ -5,13 +5,14 @@ import 'package:healthcare_app/services/notificationService.dart';
 import 'package:healthcare_app/services/firestore_service.dart';
 import 'package:healthcare_app/services/permission_handler_services.dart';
 import 'features/Sign-in.dart';
-import 'features/HomePage.dart';
+import 'features/main_navigation.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeApp();
   runApp(MyApp());
 }
+
 Future<void> initializeApp() async {
   try {
     await Firebase.initializeApp();
@@ -30,7 +31,7 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
         visualDensity: VisualDensity.adaptivePlatformDensity,
-        // Add additional theme settings for Bluetooth UI
+        scaffoldBackgroundColor: Colors.grey[50],
         cardTheme: CardTheme(
           elevation: 4,
           shape: RoundedRectangleBorder(
@@ -76,9 +77,8 @@ class AuthenticationWrapper extends StatelessWidget {
               }
 
               if (userDataSnapshot.hasData) {
-                // Show permission handler page before HomePage
                 return PermissionHandlerPage(
-                  nextPage: HomePage(userData: userDataSnapshot.data!),
+                  nextPage: MainNavigation(userData: userDataSnapshot.data!),
                 );
               }
 

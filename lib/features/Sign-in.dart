@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../services/firestore_service.dart';
 import 'Sign-up.dart';
 import 'HomePage.dart';
+import 'main_navigation.dart';
 
 class SignInPage extends StatefulWidget {
   @override
@@ -65,7 +66,7 @@ class _SignInPageState extends State<SignInPage> {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (context) => HomePage(userData: userDataMap),
+          builder: (context) => MainNavigation(userData: userDataMap),
         ),
       );
     } on FirebaseAuthException catch (e) {

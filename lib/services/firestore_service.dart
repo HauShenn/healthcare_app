@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
+import 'notificationService.dart';
+
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
@@ -49,15 +51,35 @@ class FirestoreService {
   }
 
 
-  Future<void> saveStepData(String userId, int steps, int goal, String format) async {
+  Future<void> saveStepData(String userId, int steps, int goal, String date) async {
     try {
-      String currentDate = DateFormat('yyyy-MM-dd').format(DateTime.now()); // Get the current date
+      await _db.runTransaction((transaction) async {
+        DocumentReference docRef = _db
+            .collection('users')
+            .doc(userId)
+            .collection('stepData')
+            .doc(date);
 
-      // Save step data with the current date as document ID
-      await _db.collection('users').doc(userId).collection('stepData').doc(currentDate).set({
-        'steps': steps,
-        'goal': goal,
-        'date': currentDate,  // Optional: Store the date as well
+        DocumentSnapshot snapshot = await transaction.get(docRef);
+
+        if (snapshot.exists) {
+          Map<String, dynamic> data = snapshot.data() as Map<String, dynamic>;
+          int smartWatchSteps = data['smartWatchSteps'] ?? 0;
+
+          transaction.update(docRef, {
+            'backgroundSteps': steps,
+            'totalSteps': steps + smartWatchSteps,
+            'goal': goal,
+          });
+        } else {
+          transaction.set(docRef, {
+            'backgroundSteps': steps,
+            'smartWatchSteps': 0,
+            'totalSteps': steps,
+            'goal': goal,
+            'date': date,
+          });
+        }
       });
 
       print('Step data saved to Firestore');
@@ -65,6 +87,7 @@ class FirestoreService {
       print('Error saving step data: $e');
     }
   }
+
 
   // Fetch the step data for a specific day
   Future<Map<String, dynamic>> getStepData(String userId) async {
@@ -81,23 +104,36 @@ class FirestoreService {
       if (docSnapshot.exists) {
         var data = docSnapshot.data()!;
         return {
-          'steps': data['steps'] ?? 0,
+          'backgroundSteps': data['backgroundSteps'] ?? 0,
+          'smartWatchSteps': data['smartWatchSteps'] ?? 0,
+          'totalSteps': data['totalSteps'] ?? 0,
           'goal': data['goal'] ?? 10000,
-          'lastRecordedDate': data['date'] ?? today,  // Ensure we return a valid date
+          'lastRecordedDate': data['date'] ?? today,
         };
       }
 
-      // If no data for today, return default values
-      return {'steps': 0, 'goal': 10000, 'lastRecordedDate': today};
+      return {
+        'backgroundSteps': 0,
+        'smartWatchSteps': 0,
+        'totalSteps': 0,
+        'goal': 10000,
+        'lastRecordedDate': today
+      };
     } catch (e) {
       print('Error fetching step data: $e');
-      return {'steps': 0, 'goal': 10000, 'lastRecordedDate': today};  // Return default values on error
+      return {
+        'backgroundSteps': 0,
+        'smartWatchSteps': 0,
+        'totalSteps': 0,
+        'goal': 10000,
+        'lastRecordedDate': today
+      };
     }
   }
+
   Future<List<Map<String, dynamic>>> getWeeklyStepData(String userId) async {
     DateTime today = DateTime.now();
     DateTime weekStart = today.subtract(Duration(days: 7));
-
     List<Map<String, dynamic>> weeklyData = [];
 
     try {
@@ -109,20 +145,22 @@ class FirestoreService {
           .get();
 
       snapshot.docs.forEach((doc) {
-        var data = doc.data() as Map<String, dynamic>;  // Cast to Map<String, dynamic>
+        var data = doc.data() as Map<String, dynamic>;
         weeklyData.add({
-          'date': data['date'] ?? '',  // Safe access with null checks
-          'steps': data['steps'] ?? 0,  // Default to 0 if null
-          'goal': data['goal'] ?? 10000,  // Default to 10000 if null
+          'date': data['date'] ?? '',
+          'steps': data['totalSteps'] ?? 0,  // Changed from 'steps' to 'totalSteps'
+          'goal': data['goal'] ?? 10000,
         });
       });
 
       return weeklyData;
     } catch (e) {
       print('Error fetching weekly step data: $e');
-      return [];  // Return empty list on error
+      return [];
     }
   }
+
+
   Future<String> saveMedicationReminder({
     required String medicationName,
     required String dosage,
@@ -195,7 +233,7 @@ class FirestoreService {
             .delete();
 
         // Cancel the notification when deleting the reminder
-        await AwesomeNotifications().cancel(reminderId.hashCode);
+        await NotificationService.cancelNotification(reminderId);
 
         print('Medication reminder deleted from Firestore and notification cancelled');
       } catch (e) {
@@ -218,10 +256,10 @@ class FirestoreService {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) throw Exception('User not authenticated');
 
-    await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
+    await _db
         .collection('medication_reminders')
+        .doc(user.uid)
+        .collection('reminders')
         .doc(id)
         .update({
       'medication_name': medicationName,
@@ -230,6 +268,9 @@ class FirestoreService {
       'repeat': repeat,
       'updated_at': FieldValue.serverTimestamp(),
     });
+
+    // Note: We're not updating the notification here anymore.
+    // This is now handled in the _saveReminder method of MedicationReminderPage.
   }
 
   Future<void> saveHealthAssessment({
@@ -394,6 +435,53 @@ class FirestoreService {
       }
     } else {
       throw Exception("User not logged in");
+    }
+  }
+
+  Future<String> getCurrentUserId() async {
+    User? user = FirebaseAuth.instance.currentUser;
+    return user?.uid ?? '';
+  }
+
+  Future<void> updateSmartWatchSteps(String userId, int steps) async {
+    String today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+    try {
+      await _db.runTransaction((transaction) async {
+        DocumentReference docRef = _db
+            .collection('users')
+            .doc(userId)
+            .collection('stepData')
+            .doc(today);
+
+        DocumentSnapshot snapshot = await transaction.get(docRef);
+
+        if (snapshot.exists) {
+          Map<String, dynamic> data = snapshot.data() as Map<String, dynamic>;
+          int backgroundSteps = data['backgroundSteps'] ?? 0;
+          int currentSmartWatchSteps = data['smartWatchSteps'] ?? 0;
+
+          // Update only if the new step count is higher
+          if (steps > currentSmartWatchSteps) {
+            transaction.update(docRef, {
+              'smartWatchSteps': steps,
+              'totalSteps': backgroundSteps + steps,
+            });
+          }
+        } else {
+          transaction.set(docRef, {
+            'backgroundSteps': 0,
+            'smartWatchSteps': steps,
+            'totalSteps': steps,
+            'goal': 10000,
+            'date': today,
+          });
+        }
+      });
+
+      print('SmartWatch step data updated in Firestore');
+    } catch (e) {
+      print('Error updating SmartWatch step data: $e');
     }
   }
 }

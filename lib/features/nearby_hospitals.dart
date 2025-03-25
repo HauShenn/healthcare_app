@@ -125,10 +125,6 @@ class _NearbyHospitalsPageState extends State<NearbyHospitalsPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Nearby Hospitals',
-            style: ThemeConstants.headerStyle,
-          ),
           SizedBox(height: ThemeConstants.spacingSmall),
           Text(
             '${_hospitals.length} hospitals found near you',

@@ -55,8 +55,10 @@ class _MedicationReminderPageState extends State<MedicationReminderPage> {
       context: context,
       initialTime: _selectedTime,
     );
-    if (picked != null) {
-      setState(() => _selectedTime = picked);
+    if (picked != null && picked != _selectedTime) {
+      setState(() {
+        _selectedTime = picked;
+      });
     }
   }
 
@@ -69,37 +71,23 @@ class _MedicationReminderPageState extends State<MedicationReminderPage> {
     });
   }
 
-  void _editReminder(Map<String, dynamic> reminder) {
-    _medicationController.text = reminder['medication_name'];
-    _dosageController.text = reminder['dosage'];
-    final timeComponents = reminder['time'].split(':');
-    setState(() {
-      _selectedTime = TimeOfDay(
-        hour: int.parse(timeComponents[0]),
-        minute: int.parse(timeComponents[1]),
-      );
-      _editingReminderId = reminder['id'];
-    });
-  }
 
   Future<void> _saveReminder() async {
-    if (!_formKey.currentState!.validate()) return;
-
     final timeString = '${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}';
 
     try {
+      String reminderId;
       if (_editingReminderId != null) {
-        // Update existing reminder
+        reminderId = _editingReminderId!;
         await _firestoreService.updateMedicationReminder(
-          id: _editingReminderId!,
+          id: reminderId,
           medicationName: _medicationController.text,
           dosage: _dosageController.text,
           time: timeString,
           repeat: 'daily',
         );
       } else {
-        // Add new reminder
-        await _firestoreService.saveMedicationReminder(
+        reminderId = await _firestoreService.saveMedicationReminder(
           medicationName: _medicationController.text,
           dosage: _dosageController.text,
           time: timeString,
@@ -107,8 +95,14 @@ class _MedicationReminderPageState extends State<MedicationReminderPage> {
         );
       }
 
-      // Create or update notification
+      // Cancel existing notification if editing
+      if (_editingReminderId != null) {
+        await NotificationService.cancelNotification(reminderId);
+      }
+
+      // Create or recreate the notification
       await NotificationService.createMedicationReminder(
+        reminderId: reminderId,
         title: 'Medication Reminder',
         body: 'Time to take ${_medicationController.text} - ${_dosageController.text}',
         time: timeString,
@@ -119,111 +113,173 @@ class _MedicationReminderPageState extends State<MedicationReminderPage> {
       );
 
       _clearForm();
-      _loadReminders();
+      await _loadReminders();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error saving reminder')),
+        SnackBar(content: Text('Error saving reminder: ${e.toString()}')),
       );
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Colors.teal.shade700, Colors.teal.shade50],
-          ),
-        ),
-        child: SafeArea(
-          child: SingleChildScrollView(
-            padding: EdgeInsets.all(spacing),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(height: spacing),
-                _buildReminderForm(),
-                SizedBox(height: spacing),
-                _buildRemindersList(),
-              ],
-            ),
-          ),
-        ),
-      ),
+
+  Future<void> _showAddEditDialog([Map<String, dynamic>? reminder]) {
+    TimeOfDay dialogTime = reminder != null
+        ? TimeOfDay(
+      hour: int.parse(reminder['time'].split(':')[0]),
+      minute: int.parse(reminder['time'].split(':')[1]),
+    )
+        : TimeOfDay.now();
+
+    return showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20.0),
+              ),
+              child: SingleChildScrollView(
+                child: Container(
+                  padding: EdgeInsets.all(spacing),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          reminder != null ? 'Edit Medication' : 'Add New Medication',
+                          style: TextStyle(
+                            fontSize: fontSize,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue.shade800,
+                          ),
+                        ),
+                        SizedBox(height: spacing),
+                        _buildTextField(
+                          controller: _medicationController,
+                          label: 'Medication Name',
+                          icon: Icons.medication,
+                        ),
+                        _buildTextField(
+                          controller: _dosageController,
+                          label: 'Dosage Amount',
+                          icon: Icons.format_size,
+                        ),
+                        Container(
+                          margin: EdgeInsets.only(bottom: spacing),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(color: Colors.teal.shade100),
+                          ),
+                          child: InkWell(
+                            onTap: () async {
+                              TimeOfDay? picked = await showTimePicker(
+                                context: context,
+                                initialTime: dialogTime,
+                              );
+                              if (picked != null && picked != dialogTime) {
+                                setState(() {
+                                  dialogTime = picked;
+                                });
+                              }
+                            },
+                            child: Padding(
+                              padding: EdgeInsets.all(16),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.teal.shade50,
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Icon(
+                                      Icons.access_time,
+                                      size: iconSize * 0.8,
+                                      color: Colors.teal.shade600,
+                                    ),
+                                  ),
+                                  SizedBox(width: 16),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Reminder Time',
+                                        style: TextStyle(
+                                          fontSize: subtitleSize,
+                                          color: Colors.teal.shade700,
+                                        ),
+                                      ),
+                                      SizedBox(height: 4),
+                                      Text(
+                                        dialogTime.format(context),
+                                        style: TextStyle(
+                                          fontSize: bodySize,
+                                          color: Colors.grey[800],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        SizedBox(height: spacing),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            TextButton(
+                              onPressed: () {
+                                Navigator.pop(context);
+                                _clearForm();
+                              },
+                              child: Text(
+                                'Cancel',
+                                style: TextStyle(fontSize: bodySize),
+                              ),
+                            ),
+                            SizedBox(width: 16),
+                            ElevatedButton(
+                              onPressed: () async {
+                                if (_formKey.currentState!.validate()) {
+                                  _selectedTime = dialogTime;
+                                  await _saveReminder();
+                                  Navigator.pop(context);
+                                }
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green.shade600,
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: spacing,
+                                  vertical: spacing / 2,
+                                ),
+                              ),
+                              child: Text(
+                                reminder != null ? 'Update' : 'Add',
+                                style: TextStyle(
+                                  fontSize: bodySize,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
-
-  Widget _buildReminderForm() {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Padding(
-        padding: EdgeInsets.all(spacing),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                _editingReminderId != null
-                    ? 'Edit Medication'
-                    : 'Add New Medication',
-                style: TextStyle(
-                  fontSize: fontSize * 1.1,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blue.shade800,
-                ),
-              ),
-              SizedBox(height: spacing),
-              _buildTextField(
-                controller: _medicationController,
-                label: 'Medication Name',
-                icon: Icons.medication,
-              ),
-              SizedBox(height: spacing),
-              _buildTextField(
-                controller: _dosageController,
-                label: 'Dosage Amount',
-                icon: Icons.format_size,
-              ),
-              SizedBox(height: spacing),
-              _buildTimeSelector(),
-              SizedBox(height: spacing),
-              SizedBox(
-                height: buttonHeight,
-                child: ElevatedButton(
-                  onPressed: _saveReminder,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green.shade600,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: Text(
-
-                    _editingReminderId != null
-                        ? 'Update Medication'
-
-                        : 'Add Medication',
-                    style: TextStyle(
-                      fontSize: fontSize,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 
   Widget _buildTextField({
     required TextEditingController controller,
@@ -275,59 +331,7 @@ class _MedicationReminderPageState extends State<MedicationReminderPage> {
     );
   }
 
-  Widget _buildTimeSelector() {
-    return Container(
-      margin: EdgeInsets.only(bottom: spacing),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.teal.shade100),
-      ),
-      child: InkWell(
-        onTap: () => _selectTime(context),
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                padding: EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.teal.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.access_time,
-                  size: iconSize * 0.8,
-                  color: Colors.teal.shade600,
-                ),
-              ),
-              SizedBox(width: 16),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Reminder Time',
-                    style: TextStyle(
-                      fontSize: subtitleSize,
-                      color: Colors.teal.shade700,
-                    ),
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    _selectedTime.format(context),
-                    style: TextStyle(
-                      fontSize: bodySize,
-                      color: Colors.grey[800],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+
 
   Widget _buildRemindersList() {
     if (_isLoading) {
@@ -371,24 +375,6 @@ class _MedicationReminderPageState extends State<MedicationReminderPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Icon(
-              Icons.list_alt,
-              size: iconSize,
-              color: Colors.blue.shade800,
-            ),
-            SizedBox(width: 12),
-            Text(
-              'Your Medications',
-              style: TextStyle(
-                fontSize: fontSize,
-                fontWeight: FontWeight.bold,
-                color: Colors.blue.shade800,
-              ),
-            ),
-          ],
-        ),
         SizedBox(height: spacing),
         ListView.separated(
           shrinkWrap: true,
@@ -488,12 +474,6 @@ class _MedicationReminderPageState extends State<MedicationReminderPage> {
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 _buildActionButton(
-                  icon: Icons.edit,
-                  label: 'Edit',
-                  onTap: () => _editReminder(reminder),
-                  color: Colors.teal,
-                ),
-                _buildActionButton(
                   icon: Icons.delete,
                   label: 'Delete',
                   onTap: () => _deleteReminder(reminder),
@@ -581,4 +561,39 @@ class _MedicationReminderPageState extends State<MedicationReminderPage> {
       ),
     );
   }
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Colors.teal.shade700, Colors.teal.shade50],
+          ),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.all(spacing),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SizedBox(height: spacing),
+                _buildRemindersList(),
+              ],
+            ),
+          ),
+        ),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showAddEditDialog(),
+        icon: Icon(Icons.add),
+        label: Text('Add Medication'),
+        backgroundColor: Colors.teal.shade600,
+      ),
+    );
+  }
+
 }
+
+

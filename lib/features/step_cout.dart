@@ -63,7 +63,7 @@ class _StepCounterState extends State<StepCounter> with SingleTickerProviderStat
     try {
       var stepData = await FirestoreService().getStepData(userId!);
       setState(() {
-        _steps = stepData['steps'] ?? 0;
+        _steps = stepData['totalSteps'] ?? 0;  // Changed from 'steps' to 'totalSteps'
         _goal = stepData['goal'] ?? 10000;
       });
     } catch (e) {
@@ -177,7 +177,7 @@ class _StepCounterState extends State<StepCounter> with SingleTickerProviderStat
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
-                      Icons.settings,
+                      Icons.flag,
                       color: Colors.teal.shade900,
                     ),
                   ),

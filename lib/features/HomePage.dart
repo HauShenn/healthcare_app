@@ -25,11 +25,11 @@ class _HomePageState extends State<HomePage> {
   int? currentHeartRate;
   final double cardPadding = 24.0;
   final double buttonHeight = 80.0;  // Increased from 72.0
-  final double fontSize = 28.0;      // Increased from 24.0
-  final double subtitleSize = 22.0;  // New
-  final double bodySize = 20.0;      // New
-  final double iconSize = 36.0;      // Increased from 32.0
-  final double spacing = 32.0;
+  final double fontSize = 18.0;      // Increased from 24.0
+  final double subtitleSize = 16.0;  // New
+  final double bodySize = 15.0;      // New
+  final double iconSize = 24.0;      // Increased from 32.0
+  final double spacing = 20.0;
 
   @override
   void initState() {
@@ -280,8 +280,6 @@ class _HomePageState extends State<HomePage> {
                 SizedBox(height: spacing),
                 _buildDeviceStatusCard(),
                 SizedBox(height: spacing),
-                _buildHealthSummaryCard(),
-                SizedBox(height: spacing),
               ],
             ),
           ),
@@ -291,208 +289,8 @@ class _HomePageState extends State<HomePage> {
   }
 
 
+  
 
-  Widget _buildHealthSummaryCard() {
-    return StreamBuilder<int>(
-      stream: _stepCountController.stream,
-      initialData: 0,
-      builder: (context, snapshot) {
-        final currentSteps = snapshot.data ?? 0;
-        final goal = 10000;
-        final progress = currentSteps / goal;
-
-        return Card(
-          elevation: 8.0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24.0),
-          ),
-          child: Padding(
-            padding: EdgeInsets.all(cardPadding),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      Icons.accessibility_new,
-                      size: iconSize,
-                      color: Colors.blue.shade800,
-                    ),
-                    SizedBox(width: 12),
-                    Text(
-                      'Today\'s Progress',
-                      style: TextStyle(
-                        fontSize: fontSize,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.blue.shade800,
-                        height: 1.3,
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: spacing),
-                _buildHealthMetric(
-                  icon: Icons.directions_walk,
-                  value: '$currentSteps steps',
-                  color: Colors.green.shade600,
-                ),
-                if (currentHeartRate != null) ...[
-                  SizedBox(height: spacing * 0.75),
-                  _buildHealthMetric(
-                    icon: Icons.favorite,
-                    value: '$currentHeartRate BPM',
-                    color: Colors.red.shade400,
-                  ),
-                ],
-                SizedBox(height: spacing),
-                _buildProgressBar(progress),
-                SizedBox(height: 16),
-                Container(
-                  padding: EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: Colors.blue.shade100,
-                      width: 1,
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.flag,
-                        size: iconSize * 0.8,
-                        color: Colors.blue.shade700,
-                      ),
-                      SizedBox(width: 12),
-                      Text(
-                        'Goal: 10,000 steps',
-                        style: TextStyle(
-                          fontSize: subtitleSize,
-                          color: Colors.blue.shade700,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-// New helper method for health metrics
-  Widget _buildHealthMetric({
-    required IconData icon,
-    required String value,
-    required Color color,
-  }) {
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: color.withOpacity(0.2),
-          width: 2,
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(icon, size: iconSize, color: color),
-          ),
-          SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  value,
-                  style: TextStyle(
-                    fontSize: fontSize,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey[800],
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Daily Activity',
-                  style: TextStyle(
-                    fontSize: bodySize,
-                    color: Colors.grey[600],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-// New helper method for progress bar
-  Widget _buildProgressBar(double progress) {
-    final percentage = (progress * 100).round();
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Progress',
-              style: TextStyle(
-                fontSize: bodySize,
-                color: Colors.grey[600],
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            Text(
-              '$percentage%',
-              style: TextStyle(
-                fontSize: bodySize,
-                color: Colors.blue.shade700,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-        SizedBox(height: 8),
-        Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: Colors.grey.shade300,
-              width: 1,
-            ),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: LinearProgressIndicator(
-              value: progress.clamp(0.0, 1.0),
-              backgroundColor: Colors.grey[100],
-              valueColor: AlwaysStoppedAnimation(
-                  percentage >= 100 ? Colors.green.shade600 : Colors.blue.shade600
-              ),
-              minHeight: 24.0,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
 
   void navigateToBluetoothConnection(BuildContext context) {
     Navigator.push(

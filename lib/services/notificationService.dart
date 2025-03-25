@@ -27,20 +27,19 @@ class NotificationService {
       }
     });
   }
-
   static Future<void> createMedicationReminder({
+    required String reminderId,
     required String title,
     required String body,
     required String time,
   }) async {
-    // Parse time (assuming format is HH:mm)
     final timeComponents = time.split(':');
     final hour = int.parse(timeComponents[0]);
     final minute = int.parse(timeComponents[1]);
 
     await AwesomeNotifications().createNotification(
       content: NotificationContent(
-        id: DateTime.now().millisecondsSinceEpoch.remainder(100000),
+        id: reminderId.hashCode,
         channelKey: 'medication_channel',
         title: title,
         body: body,
@@ -49,8 +48,13 @@ class NotificationService {
       schedule: NotificationCalendar(
         hour: hour,
         minute: minute,
-        repeats: true, // Repeat daily
+        repeats: true,
+        allowWhileIdle: true,
       ),
     );
+  }
+
+  static Future<void> cancelNotification(String reminderId) async {
+    await AwesomeNotifications().cancel(reminderId.hashCode);
   }
 }

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // Import Firestore
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ProfilePage extends StatefulWidget {
   @override
@@ -12,6 +12,7 @@ class _ProfilePageState extends State<ProfilePage> {
   final _emailController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
+
   @override
   void initState() {
     super.initState();
@@ -20,7 +21,6 @@ class _ProfilePageState extends State<ProfilePage> {
 
   void _loadUserProfile() {
     final currentUser = FirebaseAuth.instance.currentUser;
-
     if (currentUser != null) {
       _nameController.text = currentUser.displayName ?? '';
       _emailController.text = currentUser.email ?? '';
@@ -37,11 +37,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
       try {
         await currentUser.updateDisplayName(_nameController.text);
-        await currentUser.updateEmail(_emailController.text);
 
         await FirebaseFirestore.instance.collection('users').doc(currentUser.uid).update({
           'name': _nameController.text,
-          'email': _emailController.text,
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -110,16 +108,12 @@ class _ProfilePageState extends State<ProfilePage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Profile Avatar with Gradient Effect
                 Center(
                   child: Container(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       gradient: LinearGradient(
-                        colors: [
-                          Colors.blue.shade300,
-                          Colors.blue.shade600,
-                        ],
+                        colors: [Colors.blue.shade300, Colors.blue.shade600],
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
@@ -135,17 +129,13 @@ class _ProfilePageState extends State<ProfilePage> {
                     child: CircleAvatar(
                       radius: 80,
                       backgroundColor: Colors.transparent,
-                      child: Icon(
-                        Icons.person,
-                        color: Colors.white,
-                        size: 80,
-                      ),
+                      child: Icon(Icons.person, color: Colors.white, size: 80),
                     ),
                   ),
                 ),
                 SizedBox(height: 32),
 
-                // Name Field with Enhanced Design
+                // Name Field (Editable)
                 TextFormField(
                   controller: _nameController,
                   style: TextStyle(fontSize: 18),
@@ -175,7 +165,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
                 SizedBox(height: 20),
 
-                // Email Field with Enhanced Design
+                // Email Field (Read-only)
                 TextFormField(
                   controller: _emailController,
                   style: TextStyle(fontSize: 18),
@@ -188,7 +178,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       borderSide: BorderSide.none,
                     ),
                     filled: true,
-                    fillColor: Colors.white,
+                    fillColor: Colors.grey[200],
                     contentPadding: EdgeInsets.symmetric(vertical: 18, horizontal: 16),
                     errorStyle: TextStyle(fontSize: 16),
                     focusedBorder: OutlineInputBorder(
@@ -196,27 +186,16 @@ class _ProfilePageState extends State<ProfilePage> {
                       borderSide: BorderSide(color: Colors.blue.shade600, width: 2),
                     ),
                   ),
-                  keyboardType: TextInputType.emailAddress,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter your email';
-                    }
-                    if (!RegExp(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$").hasMatch(value)) {
-                      return 'Please enter a valid email';
-                    }
-                    return null;
-                  },
+                  readOnly: true,
+                  enabled: false,
                 ),
                 SizedBox(height: 32),
 
-                // Save Button with Loading Indicator and Enhanced Design
+                // Save Button
                 Container(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
-                      colors: [
-                        Colors.blue.shade600,
-                        Colors.blue.shade800,
-                      ],
+                      colors: [Colors.blue.shade600, Colors.blue.shade800],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
@@ -258,7 +237,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
                 SizedBox(height: 20),
 
-                // Cancel Button with Subtle Design
+                // Cancel Button
                 TextButton(
                   onPressed: () => Navigator.pop(context),
                   style: TextButton.styleFrom(

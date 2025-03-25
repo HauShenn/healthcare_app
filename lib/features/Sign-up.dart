@@ -97,9 +97,11 @@ class _SignUpPageState extends State<SignUpPage> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   // App Logo or Branding
-                  FlutterLogo(
-                    size: 100,
-                    style: FlutterLogoStyle.stacked,
+                  Image.asset(
+                    'assets/icon.png',
+                    height: 100,
+                    width: 100,
+                    fit: BoxFit.contain,
                   ),
                   SizedBox(height: 20),
 
